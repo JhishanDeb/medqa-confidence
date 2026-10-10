@@ -165,7 +165,9 @@ class VLLMBackend(Backend):
         res = []
         for o in outs:
             lp = o.outputs[0].logprobs[0]  # dict token_id -> Logprob (top-k, plus sampled token)
-            vals = {int(t): float(v.logprob) for t, v in lp.items()}
+            if not hasattr(lp, "items"):
+                raise RuntimeError(f"unexpected vLLM logprobs container {type(lp)}; unset VLLM_FLAT_LOGPROBS")
+            vals = {int(t): float(getattr(v, "logprob", v)) for t, v in lp.items()}
             check_finite(vals.values(), "vLLM top-k logprobs")
             res.append({t: v for t, v in vals.items() if t in wanted})
         return res
@@ -179,20 +181,22 @@ class VLLMBackend(Backend):
 
 # --------------------------------------------------------------------------------------- transformers
 class HFBackend(Backend):
+    """transformers fallback with its own KV-cache decoding loop, so that sampled requests from several
+    questions can share a batch while each question keeps its own torch.Generator(seed=BASE_SEED+qid)."""
     name = "hf"
 
-    def __init__(self, model_path: str, cfg, batch_size: int = 16, device_map="auto", dtype=None):
+    def __init__(self, model_path: str, cfg, batch_size: int = 16, sample_batch_questions: int = 4,
+                 device_map="auto", dtype=None):
         import torch
-        from transformers import AutoModelForCausalLM, AutoTokenizer, GenerationConfig
+        import transformers
+        from transformers import AutoModelForCausalLM, AutoTokenizer
 
         self.torch = torch
         self.tokenizer = AutoTokenizer.from_pretrained(model_path)
-        self.tokenizer.padding_side = "left"
         self.eos_ids = eos_token_ids(model_path, self.tokenizer)
         self.pad_id = self.tokenizer.pad_token_id if self.tokenizer.pad_token_id is not None else self.eos_ids[0]
         self.letter_variants, self.letter_variant_strings = find_letter_variants(self.tokenizer)
         self.topk = None  # full distribution
-        import transformers
         dtype = dtype or getattr(torch, cfg.dtype)
         major, minor = (int(x) for x in transformers.__version__.split(".")[:2])
         dkey = "dtype" if (major, minor) >= (4, 56) else "torch_dtype"  # kwarg renamed in 4.56
@@ -200,71 +204,99 @@ class HFBackend(Backend):
         if next(self.model.parameters()).dtype != dtype:
             raise RuntimeError(f"model loaded in {next(self.model.parameters()).dtype}, expected {dtype}")
         self.model.eval()
-        # Replace model-provided sampling defaults (top_k, repetition_penalty, ...) with a clean config.
-        self.model.generation_config = GenerationConfig(eos_token_id=self.eos_ids, pad_token_id=self.pad_id,
-                                                        bos_token_id=self.tokenizer.bos_token_id)
         self.batch_size = batch_size
+        self.sample_batch_questions = sample_batch_questions
 
-    def _device(self):
-        return next(self.model.parameters()).device
+    def _in_device(self):
+        return self.model.get_input_embeddings().weight.device
 
     def _batch(self, prompts):
         enc = [self.tokenizer.encode(p, add_special_tokens=False) for p in prompts]
         L = max(len(e) for e in enc)
         ids = [[self.pad_id] * (L - len(e)) + e for e in enc]
         att = [[0] * (L - len(e)) + [1] * len(e) for e in enc]
-        t = self.torch
-        return t.tensor(ids, device=self._device()), t.tensor(att, device=self._device())
+        t, dev = self.torch, self._in_device()
+        ids, att = t.tensor(ids, device=dev), t.tensor(att, device=dev)
+        pos = (att.cumsum(-1) - 1).clamp(min=0)  # left padding -> explicit position ids
+        return ids, att, pos
 
-    def _decode_outputs(self, seqs, prompt_len, max_new):
-        outs = []
-        for s in seqs.tolist():
-            gen = s[prompt_len:]
-            n, stopped = len(gen), False
-            for j, tid in enumerate(gen):
-                if tid in self.eos_ids:
-                    n, stopped = j, True
-                    break
-            gen = gen[:n]
-            finish = "stop" if stopped or n < max_new else "length"
-            outs.append(GenOutput(self.tokenizer.decode(gen, skip_special_tokens=True), n, finish))
-        return outs
+    def _forward_last(self, ids, att, pos, past=None, use_cache=False):
+        """Logits of the last position only (avoids a B x L x vocab logits tensor)."""
+        out = self.model.base_model(input_ids=ids, attention_mask=att, position_ids=pos,
+                                    past_key_values=past, use_cache=use_cache)
+        logits = self.model.get_output_embeddings()(out.last_hidden_state[:, -1, :]).float()
+        if not bool(self.torch.isfinite(logits).all()):
+            raise NonFiniteLogprobError("non-finite logits in HF forward pass")
+        return logits, (out.past_key_values if use_cache else None)
 
-    def _gen(self, prompts, r, n):
+    def _decode(self, prompts, max_new, temperature, top_p, seeds):
+        """Greedy (temperature 0) or ancestral sampling. seeds[i] identifies row i's generator; rows with
+        the same seed share one generator (the n samples of one question). Every row draws at every step,
+        so a question's samples do not depend on which other questions share the batch."""
         t = self.torch
-        ids, att = self._batch(prompts)
-        kw = dict(max_new_tokens=r.max_new_tokens, num_return_sequences=n,
-                  eos_token_id=self.eos_ids, pad_token_id=self.pad_id)
-        if r.temperature > 0:
-            kw.update(do_sample=True, temperature=r.temperature, top_p=r.top_p, top_k=0)
-        else:
-            kw.update(do_sample=False)
+        ids, att, pos = self._batch(prompts)
+        B = ids.shape[0]
+        eos = set(self.eos_ids)
+        toks = [[] for _ in range(B)]
+        finished, stopped = [False] * B, [False] * B
+        gens = None
         with t.no_grad():
-            seqs = self.model.generate(input_ids=ids, attention_mask=att, **kw)
-        return self._decode_outputs(seqs, ids.shape[1], r.max_new_tokens)
+            logits, past = self._forward_last(ids, att, pos, use_cache=True)
+            last_pos = pos[:, -1:]
+            for step in range(max_new):
+                if temperature == 0:
+                    nxt = logits.argmax(-1).tolist()
+                else:
+                    probs = t.softmax(logits / temperature, dim=-1)
+                    if top_p < 1.0:
+                        sp, si = probs.sort(-1, descending=True)
+                        sp[(sp.cumsum(-1) - sp) > top_p] = 0
+                        probs = t.zeros_like(probs).scatter(-1, si, sp)
+                        probs = probs / probs.sum(-1, keepdim=True)
+                    if gens is None:
+                        made = {}
+                        for sd in seeds:
+                            if sd not in made:
+                                made[sd] = t.Generator(device=probs.device).manual_seed(int(sd))
+                        gens = [made[sd] for sd in seeds]
+                    nxt = [int(t.multinomial(probs[i], 1, generator=gens[i])) for i in range(B)]
+                for i in range(B):
+                    if finished[i]:
+                        continue
+                    if nxt[i] in eos:
+                        finished[i] = stopped[i] = True
+                    else:
+                        toks[i].append(nxt[i])
+                        finished[i] = len(toks[i]) >= max_new
+                if all(finished):
+                    break
+                step_ids = t.tensor([[self.pad_id if stopped[i] else nxt[i]] for i in range(B)], device=ids.device)
+                att = t.cat([att, t.ones((B, 1), dtype=att.dtype, device=att.device)], dim=-1)
+                last_pos = last_pos + 1
+                logits, past = self._forward_last(step_ids, att, last_pos, past, use_cache=True)
+        return [GenOutput(self.tokenizer.decode(toks[i], skip_special_tokens=True), len(toks[i]),
+                          "stop" if stopped[i] else "length") for i in range(B)]
 
     def generate(self, reqs):
-        t = self.torch
         res = [None] * len(reqs)
-        greedy = [i for i, r in enumerate(reqs) if r.temperature == 0 and r.n == 1]
-        # group greedy requests with the same max_new_tokens into batches
-        by_len = {}
-        for i in greedy:
-            by_len.setdefault(reqs[i].max_new_tokens, []).append(i)
-        for _, idxs in by_len.items():
-            for b in range(0, len(idxs), self.batch_size):
-                chunk = idxs[b:b + self.batch_size]
-                outs = self._gen([reqs[i].prompt for i in chunk], reqs[chunk[0]], 1)
-                for i, o in zip(chunk, outs):
-                    res[i] = [o]
+        groups = {}
         for i, r in enumerate(reqs):
-            if res[i] is not None:
-                continue
-            if r.seed is not None:  # per-question seed
-                t.manual_seed(r.seed)
-                if t.cuda.is_available():
-                    t.cuda.manual_seed_all(r.seed)
-            res[i] = self._gen([r.prompt], r, r.n)
+            key = (r.max_new_tokens, r.temperature, r.top_p, r.temperature == 0 and r.n == 1)
+            groups.setdefault(key, []).append(i)
+        for (max_new, temp, top_p, greedy), idxs in groups.items():
+            step = self.batch_size if greedy else self.sample_batch_questions
+            for b in range(0, len(idxs), step):
+                chunk = idxs[b:b + step]
+                rows, seeds, owner = [], [], []
+                for i in chunk:
+                    r = reqs[i]
+                    for j in range(r.n):
+                        rows.append(r.prompt)
+                        seeds.append(r.seed if r.seed is not None else 0)
+                        owner.append(i)
+                outs = self._decode(rows, max_new, temp, top_p, seeds)
+                for i in chunk:
+                    res[i] = [o for o, w in zip(outs, owner) if w == i]
         return res
 
     def next_token_logprobs(self, prompts):
@@ -272,11 +304,9 @@ class HFBackend(Backend):
         wanted = self.all_letter_ids()
         res = []
         for b in range(0, len(prompts), self.batch_size):
-            ids, att = self._batch(prompts[b:b + self.batch_size])
+            ids, att, pos = self._batch(prompts[b:b + self.batch_size])
             with t.no_grad():
-                logits = self.model(input_ids=ids, attention_mask=att).logits[:, -1, :].float()
-            if not bool(t.isfinite(logits).all()):
-                raise NonFiniteLogprobError("non-finite logits in HF next-token forward pass")
+                logits, _ = self._forward_last(ids, att, pos)
             lp = t.log_softmax(logits, dim=-1)
             sel = lp[:, wanted].cpu().tolist()
             for row in sel:
@@ -413,3 +443,30 @@ class MockBackend(Backend):
                 out[nosp] = math.log(mass * probs[L] * 0.1)
             res.append(out)
         return res
+
+
+# ------------------------------------------------------------------------------------- smoke test
+def smoke_test(model_path: str, backend: str = "vllm") -> dict:
+    """Load the backend, generate a few tokens and read letter logprobs. Run in a subprocess so a failed
+    engine start cannot leave the notebook kernel holding GPU memory."""
+    import json
+    import time
+
+    from config import Config
+
+    cfg = Config()
+    t0 = time.time()
+    be = VLLMBackend(model_path, cfg) if backend == "vllm" else HFBackend(model_path, cfg)
+    load_s = time.time() - t0
+    out = be.generate([GenRequest(be.render("Reply with the single word OK."), 8)])[0][0]
+    lp = be.next_token_logprobs([be.render("Which letter comes first in the alphabet? Reply 'Answer: <letter>'.")
+                                 + "Answer:"])[0]
+    res = {"ok": True, "load_seconds": load_s, "text": out.text, "letter_logprobs": {str(k): v for k, v in lp.items()},
+           "info": be.info()}
+    print("SMOKE_RESULT " + json.dumps(res, default=str))
+    return res
+
+
+if __name__ == "__main__":
+    import sys as _sys
+    smoke_test(_sys.argv[1], _sys.argv[2] if len(_sys.argv) > 2 else "vllm")

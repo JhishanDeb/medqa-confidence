@@ -161,17 +161,18 @@ def test_combine_two_models(tmp_path):
     assert cot["holm_family_size"] == 3 * n_ok
 
 
-def test_hf_backend_tiny_random_model(tmp_path):
+@pytest.fixture(scope="module")
+def tiny_hf(tmp_path_factory):
     torch = pytest.importorskip("torch")
-    transformers = pytest.importorskip("transformers")
+    pytest.importorskip("transformers")
     from tokenizers import Tokenizer, models, pre_tokenizers
     try:
         from transformers import LlamaConfig, LlamaForCausalLM, PreTrainedTokenizerFast
     except Exception as e:  # e.g. transformers too new for the installed torch
         pytest.skip(f"transformers models unavailable: {e}")
-
     from medqa_conf.backends import HFBackend
 
+    path = tmp_path_factory.mktemp("tiny")
     words = ["<pad>", "<s>", "</s>", "A", "B", "C", "D", "Answer:", "Confidence:", "Question:", "<unk>"]
     words += [f"w{i}" for i in range(50)]
     tk = Tokenizer(models.WordLevel({w: i for i, w in enumerate(words)}, unk_token="<unk>"))
@@ -179,13 +180,20 @@ def test_hf_backend_tiny_random_model(tmp_path):
     tok = PreTrainedTokenizerFast(tokenizer_object=tk, bos_token="<s>", eos_token="</s>", pad_token="<pad>",
                                   unk_token="<unk>")
     tok.chat_template = "{% for m in messages %}<s> {{ m['content'] }} {% endfor %}{% if add_generation_prompt %} w0 {% endif %}"
-    tok.save_pretrained(tmp_path)
+    tok.save_pretrained(path)
     torch.manual_seed(0)
-    LlamaForCausalLM(LlamaConfig(vocab_size=len(words), hidden_size=32, intermediate_size=64, num_hidden_layers=2,
-                                 num_attention_heads=4, num_key_value_heads=2, max_position_embeddings=512,
-                                 bos_token_id=1, eos_token_id=2, pad_token_id=0)).save_pretrained(tmp_path)
+    model = LlamaForCausalLM(LlamaConfig(vocab_size=len(words), hidden_size=32, intermediate_size=64,
+                                         num_hidden_layers=2, num_attention_heads=4, num_key_value_heads=2,
+                                         max_position_embeddings=512, bos_token_id=1, eos_token_id=2,
+                                         pad_token_id=0))
+    model.save_pretrained(path)
     cfg = dataclasses.replace(Config(), model_id="tiny/random", greedy_max_new_tokens=6, sample_max_new_tokens=6)
-    be = HFBackend(str(tmp_path), cfg, batch_size=2, device_map=None, dtype=torch.float32)
+    be = HFBackend(str(path), cfg, batch_size=2, sample_batch_questions=2, device_map=None, dtype=torch.float32)
+    return torch, be, cfg, path
+
+
+def test_hf_backend_pipeline(tiny_hf, tmp_path):
+    torch, be, cfg, _ = tiny_hf
     assert be.letter_variants == {"A": [3], "B": [4], "C": [5], "D": [6]}
     rows = data.synthetic_rows(3, seed=1)
     qs, info = data.load_questions(cfg, [], rows, expected_test=3, expected_train=None)
@@ -195,3 +203,49 @@ def test_hf_backend_tiny_random_model(tmp_path):
     assert df.letter_mass.between(0, 1).all() and (df.n_letters_missing_topk == 0).all()
     log = json.load(open(tmp_path / "out" / "run_log.json"))
     assert log["determinism"]["identical"] == 3
+
+
+def test_hf_decode_matches_generate_and_padding(tiny_hf):
+    from medqa_conf.backends import GenRequest
+    torch, be, cfg, _ = tiny_hf
+    short, long_ = "<s> w1 w2", "<s> w3 w4 w5 w6 w7 w8 w9 Answer:"
+    # greedy loop == transformers generate (no padding)
+    for p in (short, long_):
+        ids = torch.tensor([be.tokenizer.encode(p, add_special_tokens=False)])
+        ref = be.model.generate(input_ids=ids, attention_mask=torch.ones_like(ids), max_new_tokens=8,
+                                do_sample=False, eos_token_id=be.eos_ids, pad_token_id=be.pad_id)
+        ref_toks = [t for t in ref[0, ids.shape[1]:].tolist() if t not in be.eos_ids][:8]
+        out = be._decode([p], 8, 0.0, 1.0, [0])[0]
+        assert be.tokenizer.encode(out.text, add_special_tokens=False) == ref_toks and out.n_tokens == len(ref_toks)
+    # left padding does not change results
+    alone = be._decode([short], 8, 0.0, 1.0, [0])[0].text
+    padded = be._decode([long_, short], 8, 0.0, 1.0, [0, 0])[1].text
+    assert alone == padded
+    lp_alone = be.next_token_logprobs([short])[0]
+    lp_pad = be.next_token_logprobs([long_, short])[1]
+    for k in lp_alone:
+        assert lp_alone[k] == pytest.approx(lp_pad[k], abs=1e-4)
+    # a question's samples do not depend on the other questions in the batch
+    r1 = GenRequest(short, 8, temperature=0.7, n=5, seed=101)
+    r2 = GenRequest(long_, 8, temperature=0.7, n=5, seed=202)
+    a = [o.text for o in be.generate([r1])[0]]
+    b = [o.text for o in be.generate([r2, r1])[1]]
+    assert a == b
+    assert len(set(a)) > 1  # actually sampling
+
+
+def test_notebooks_inline_current_sources():
+    nbformat = pytest.importorskip("nbformat")
+    for name in ("generate_and_analyze.ipynb", "combine_models.ipynb"):
+        nb = nbformat.read(os.path.join(ROOT, "kaggle", name), as_version=4)
+        written = {}
+        for c in nb.cells:
+            if c.cell_type == "code" and c.source.startswith("%%writefile "):
+                head, body = c.source.split("\n", 1)
+                written[head.split(" ", 1)[1].strip()] = body
+        assert "medqa_src/config.py" in written and "medqa_src/PREREGISTRATION.md" in written
+        for rel, body in written.items():
+            local = rel.replace("medqa_src/", "", 1)
+            local = os.path.join(ROOT, local if not local.startswith("medqa_conf/") else "src/" + local)
+            with open(local, encoding="utf-8") as f:
+                assert f.read() == body, f"{name}: {rel} is stale; run tools/build_kaggle_notebook.py"
