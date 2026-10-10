@@ -48,8 +48,9 @@ import os, sys, time, json, subprocess, platform
 T_START = time.time()
 MOCK = os.environ.get("MEDQA_MOCK") == "1"   # CPU self-test of this notebook; never set on Kaggle
 
-def sh(cmd, timeout=None):
-    r = subprocess.run(cmd, shell=isinstance(cmd, str), capture_output=True, text=True, timeout=timeout)
+def sh(cmd, timeout=None, cwd=None, env=None):
+    r = subprocess.run(cmd, shell=isinstance(cmd, str), capture_output=True, text=True, timeout=timeout,
+                       cwd=cwd, env=env)
     return r.returncode, (r.stdout or "") + (r.stderr or "")
 
 # torch is queried in a subprocess so that the kernel does not import it before vLLM is installed
@@ -177,8 +178,13 @@ TIMINGS["model_download"] = time.time() - t0
 
 if not MOCK and USE_VLLM:
     t0 = time.time()
+    SMOKE_ENV = dict(os.environ, PYTHONPATH=SRC_DIR)
+    code, out = sh([sys.executable, "-c", "import config, medqa_conf.backends"], cwd=SRC_DIR, env=SMOKE_ENV)
+    if code != 0:  # a setup bug, not a vLLM failure: stop instead of silently falling back
+        raise RuntimeError("cannot import medqa_conf in a subprocess:\\n" + out[-2000:])
     try:
-        code, out = sh([sys.executable, "-m", "medqa_conf.backends", MODEL_PATH, "vllm"], timeout=1800)
+        code, out = sh([sys.executable, "-m", "medqa_conf.backends", MODEL_PATH, "vllm"], timeout=1800,
+                       cwd=SRC_DIR, env=SMOKE_ENV)
     except subprocess.TimeoutExpired:
         code, out = 1, "smoke test timed out"
     ok = code == 0 and "SMOKE_RESULT" in out
