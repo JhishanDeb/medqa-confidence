@@ -120,7 +120,10 @@ class Backend:
 class VLLMBackend(Backend):
     name = "vllm"
 
-    def __init__(self, model_path: str, cfg, gpu_memory_utilization: float = 0.90):
+    # 0.80 (not 0.90): vLLM's budget excludes CUDA-graph memory (~1.1 GiB/GPU on T4), so 0.90 over-commits a
+    # 15 GB T4 and the first large batch OOMs. max_num_batched_tokens caps the prefill activation peak.
+    def __init__(self, model_path: str, cfg, gpu_memory_utilization: float = 0.80,
+                 max_num_batched_tokens: int = 4096):
         from transformers import AutoTokenizer
         from vllm import LLM
 
@@ -130,7 +133,8 @@ class VLLMBackend(Backend):
         self.topk = cfg.topk_logprobs
         kw = dict(model=model_path, tokenizer=model_path, tensor_parallel_size=cfg.tensor_parallel_size,
                   dtype=cfg.dtype, max_model_len=cfg.max_model_len, seed=cfg.base_seed,
-                  gpu_memory_utilization=gpu_memory_utilization, disable_custom_all_reduce=True,
+                  gpu_memory_utilization=gpu_memory_utilization, max_num_batched_tokens=max_num_batched_tokens,
+                  disable_custom_all_reduce=True,
                   max_logprobs=max(20, cfg.topk_logprobs), generation_config="vllm")
         try:
             self.llm = LLM(**kw)
