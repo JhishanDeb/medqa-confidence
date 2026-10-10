@@ -105,28 +105,56 @@ def _pkg_versions(names):
         f"\\ntry: out['{n}']=m.version('{n}')\\nexcept Exception: pass" for n in names) + "\\nprint(json.dumps(out))"
     return json.loads(sh([sys.executable, "-c", code])[1].strip().splitlines()[-1])
 
+def _wheel_exists(url):
+    import urllib.request
+    try:
+        urllib.request.urlopen(urllib.request.Request(url, method="HEAD"), timeout=60)
+        return True
+    except Exception:
+        return False
+
 def install_vllm():
+    import re
     have = _pkg_versions(["vllm"])
     if "vllm" in have:
         return True, f"vllm {have['vllm']} already installed"
     pins = _pkg_versions(["torch"])
     if "torch" not in pins:
         return False, "torch not installed"
+    torch_pub, _, torch_cuda = pins["torch"].partition("+")  # e.g. "2.11.0", "cu128"
     with open("/tmp/vllm_constraints.txt", "w") as f:  # only torch: vLLM may pin other torchaudio/vision
-        f.write(f"torch=={pins['torch'].split('+')[0]}\\n")
+        f.write(f"torch=={torch_pub}\\n")
     base = [sys.executable, "-m", "pip", "install", "--prefer-binary", "-c", "/tmp/vllm_constraints.txt"]
     code, out = sh(base + ["--only-binary", "vllm", "--dry-run", "vllm"], timeout=1200)  # wheel available?
     BACKEND_NOTE["vllm_dry_run_tail"] = out[-1500:]
-    if code != 0:
-        return False, "no vLLM wheel compatible with this Python/torch (dry run failed)"
-    code, out = sh(base + ["-q", "--only-binary", "vllm", "vllm"], timeout=2400)
+    m = re.search(r"Would install .*?\\bvllm-(\\d+\\.\\d+\\.\\d+(?:\\.post\\d+)?)\\b", out, re.S)
+    if code != 0 or not m:
+        return False, "no vLLM release built for this torch version (dry run failed)"
+    ver = m.group(1)
+    # The PyPI wheel can target a different CUDA major than torch (vLLM 0.26 on PyPI is built for CUDA 13; the
+    # Kaggle torch is cu128 -> "libcudart.so.13 not found"). The GitHub release also ships CUDA 12.x builds
+    # ("+cu129"); for a CUDA 12 torch, install one of those (same torch version, same CUDA major).
+    target = ["vllm"]
+    if torch_cuda.startswith("cu12"):
+        tags = []
+        for t in (torch_cuda, "cu129", "cu128", "cu126"):
+            if t not in tags:
+                tags.append(t)
+        for t in tags:
+            url = (f"https://github.com/vllm-project/vllm/releases/download/v{ver}/"
+                   f"vllm-{ver}+{t}-cp38-abi3-manylinux_2_28_x86_64.whl")
+            if _wheel_exists(url):
+                target = [url]
+                break
+    BACKEND_NOTE["vllm_wheel"] = target[0]
+    code, out = sh(base + ["-q"] + target, timeout=2400)
     BACKEND_NOTE["vllm_install_tail"] = out[-1500:]
     after = _pkg_versions(["vllm", "torch"])
     if code != 0 or "vllm" not in after:
         return False, "pip install vllm failed"
     if after.get("torch") != pins.get("torch"):
         return False, f"vLLM install changed torch {pins.get('torch')} -> {after.get('torch')}"
-    return True, f"installed vllm {after['vllm']} for torch {after['torch']}"
+    return True, f"installed vllm {after['vllm']} ({target[0]}) for torch {after['torch']}"
 
 USE_VLLM = False
 if MOCK:
