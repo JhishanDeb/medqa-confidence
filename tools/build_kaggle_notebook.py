@@ -154,6 +154,15 @@ def install_vllm():
         return False, "pip install vllm failed"
     if after.get("torch") != pins.get("torch"):
         return False, f"vLLM install changed torch {pins.get('torch')} -> {after.get('torch')}"
+    # torchcodec (optional video decoding pulled in by vLLM) can be built for another torch; it then fails with
+    # OSError, which vLLM's optional import does not catch. Text-only study -> remove it if it cannot load.
+    if "torchcodec" in _pkg_versions(["torchcodec"]) and sh([sys.executable, "-c", "import torchcodec"])[0] != 0:
+        sh([sys.executable, "-m", "pip", "uninstall", "-y", "-q", "torchcodec"])
+        BACKEND_NOTE["removed_broken_torchcodec"] = True
+    code, out = sh([sys.executable, "-c", "from vllm import LLM, SamplingParams"], timeout=900)
+    if code != 0:  # fail here in seconds, not after the model download
+        BACKEND_NOTE["vllm_import_error"] = out[-3000:]
+        return False, "vLLM installed but cannot be imported: " + out.strip().splitlines()[-1][:300]
     return True, f"installed vllm {after['vllm']} ({target[0]}) for torch {after['torch']}"
 
 USE_VLLM = False
