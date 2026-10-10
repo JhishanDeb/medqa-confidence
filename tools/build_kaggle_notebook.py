@@ -74,6 +74,17 @@ import sys
 WORK = "/kaggle/working" if os.path.isdir("/kaggle/working") else os.getcwd()
 SRC_DIR = os.path.abspath("medqa_src")
 sys.path.insert(0, SRC_DIR)
+import importlib
+_NEED = ["config.py", "PREREGISTRATION.md"] + [f"medqa_conf/{m}.py" for m in (
+    "__init__", "data", "prompts", "parsing", "backends", "generate", "signals", "metrics", "stats", "report",
+    "sanity", "bundle", "pipeline")]
+_missing = [p for p in _NEED if not os.path.exists(os.path.join(SRC_DIR, p))]
+if _missing:
+    raise RuntimeError(f"source files not written: {_missing}. Run the notebook from the top "
+                       "(Run All / Save & Run All): every %%writefile cell above must run first.")
+importlib.invalidate_caches()
+for _m in [k for k in list(sys.modules) if k in ("config", "medqa_conf") or k.startswith("medqa_conf.")]:
+    del sys.modules[_m]  # cells re-run by hand -> import the freshly written code
 CACHE = "/tmp/hf_cache"                      # model + dataset cache stays out of /kaggle/working
 os.environ["HF_HOME"] = CACHE
 os.environ.setdefault("VLLM_WORKER_MULTIPROC_METHOD", "spawn")
