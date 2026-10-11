@@ -5,3 +5,6 @@ outputs/
 kaggle_local/
 *.egg-info/
 outputs_mock/
+repro*/
+combined/
+_unzipped/

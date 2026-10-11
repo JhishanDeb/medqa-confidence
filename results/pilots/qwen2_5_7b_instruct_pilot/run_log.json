@@ -1,0 +1,241 @@
+{
+  "backend": {
+    "backend": "vllm",
+    "eos_ids": [
+      151643,
+      151645
+    ],
+    "letter_variants": {
+      "A": [
+        [
+          32,
+          "A"
+        ],
+        [
+          362,
+          " A"
+        ]
+      ],
+      "B": [
+        [
+          33,
+          "B"
+        ],
+        [
+          425,
+          " B"
+        ]
+      ],
+      "C": [
+        [
+          34,
+          "C"
+        ],
+        [
+          356,
+          " C"
+        ]
+      ],
+      "D": [
+        [
+          35,
+          "D"
+        ],
+        [
+          422,
+          " D"
+        ]
+      ]
+    },
+    "topk": 20,
+    "vllm_version": "0.26.0"
+  },
+  "backend_note": {
+    "install": "installed vllm 0.26.0+cu129 (https://github.com/vllm-project/vllm/releases/download/v0.26.0/vllm-0.26.0+cu129-cp38-abi3-manylinux_2_28_x86_64.whl) for torch 2.11.0+cu128",
+    "removed_broken_torchcodec": true,
+    "requested": "auto",
+    "used": "vllm",
+    "vllm_dry_run_tail": "rcer-0.11.3 loguru-0.7.3 mcp-2.3.0 mcp-types-2.3.0 mistral_common-1.12.0 model-hosting-container-standards-0.1.16 msgspec-0.22.0 numba-0.65.0 nvidia-cuda-cccl-13.3.4.3.1 nvidia-cuda-crt-13.4.92 nvidia-cuda-nvcc-13.4.92 nvidia-cuda-nvdisasm-13.4.92 nvidia-cuda-nvrtc-13.4.92 nvidia-cuda-runtime-13.4.92 nvidia-cudnn-frontend-1.28.0 nvidia-cutlass-dsl-4.6.0 nvidia-cutlass-dsl-libs-base-4.6.0 nvidia-cutlass-dsl-libs-core-4.6.0 nvidia-cutlass-dsl-libs-cu12-4.6.0 nvidia-cutlass-dsl-libs-cu13-4.6.0 nvidia-nvvm-13.4.92 nvtx-0.2.15 openai-harmony-0.0.8 opentelemetry-api-1.45.1 opentelemetry-exporter-http-transport-0.66b1 opentelemetry-exporter-otlp-1.45.1 opentelemetry-exporter-otlp-common-0.66b1 opentelemetry-exporter-otlp-proto-common-1.45.1 opentelemetry-exporter-otlp-proto-grpc-1.45.1 opentelemetry-exporter-otlp-proto-http-1.45.1 opentelemetry-proto-1.45.1 opentelemetry-sdk-1.45.1 opentelemetry-semantic-conventions-0.66b1 opentelemetry-semantic-conventions-ai-0.5.1 outlines_core-0.2.14 partial-json-parser-0.2.1.1.post7 prometheus-fastapi-instrumentator-8.1.0 protobuf-6.33.6 pybase64-1.5.1 pycountry-26.2.16 pydantic-extra-types-2.11.1 pydantic-settings-2.15.0 pyelftools-0.33 pynvvideocodec-2.0.4 quack-kernels-0.6.3 rich-toolkit-0.20.6 rignore-0.8.1 setproctitle-1.3.8 setuptools-80.10.2 sse-starlette-3.5.0 supervisor-4.3.0 tilelang-0.1.9 tokenspeed-mla-0.1.8 tokenspeed-triton-3.9.10.post20261008 torch_c_dlpack_ext-0.1.5 torchcodec-0.17.0 vllm-0.26.0 xgrammar-0.2.7 z3-solver-4.15.4.0\n",
+    "vllm_install_tail": "     \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501 518.9/518.9 MB 3.4 MB/s eta 0:00:00\nERROR: pip's dependency resolver does not currently take into account all the packages that are installed. This behaviour is the source of the following dependency conflicts.\nbigframes 2.48.0 requires google-cloud-bigquery-storage<3.0.0,>=2.30.0, which is not installed.\ngrpcio-tools 1.71.2 requires protobuf<6.0dev,>=5.26.1, but you have protobuf 6.33.6 which is incompatible.\nydata-profiling 4.18.4 requires numba<0.63,>=0.60, but you have numba 0.65.0 which is incompatible.\ncuml-cu12 26.2.0 requires numba<0.62.0,>=0.60.0, but you have numba 0.65.0 which is incompatible.\ngoogle-ai-generativelanguage 0.6.15 requires protobuf!=4.21.0,!=4.21.1,!=4.21.2,!=4.21.3,!=4.21.4,!=4.21.5,<6.0.0dev,>=3.20.2, but you have protobuf 6.33.6 which is incompatible.\ncudf-cu12 26.2.1 requires numba<0.62.0,>=0.60.0, but you have numba 0.65.0 which is incompatible.\ngrpcio-status 1.71.2 requires protobuf<6.0dev,>=5.26.1, but you have protobuf 6.33.6 which is incompatible.\ngoogle-adk 2.7.1 requires opentelemetry-api<=1.42.1,>=1.39, but you have opentelemetry-api 1.45.1 which is incompatible.\ngoogle-adk 2.7.1 requires opentelemetry-sdk<=1.42.1,>=1.39, but you have opentelemetry-sdk 1.45.1 which is incompatible.\n",
+    "vllm_smoke_test": "ok",
+    "vllm_wheel": "https://github.com/vllm-project/vllm/releases/download/v0.26.0/vllm-0.26.0+cu129-cp38-abi3-manylinux_2_28_x86_64.whl"
+  },
+  "config": {
+    "alpha": 0.05,
+    "base_seed": 12345,
+    "boot_seed": 2026,
+    "checkpoint_every": 50,
+    "confidence_max_new_tokens": 6,
+    "coverage": 0.8,
+    "cv_folds": 5,
+    "cv_seed": 2026,
+    "dataset_id": "GBaker/MedQA-USMLE-4-options",
+    "determinism_n": 10,
+    "dtype": "float16",
+    "flag_max_parse_fail": 0.1,
+    "flag_max_truncation": 0.1,
+    "flag_min_accuracy": 0.4,
+    "flag_min_median_letter_mass": 0.5,
+    "greedy_max_new_tokens": 1024,
+    "max_model_len": 4096,
+    "max_projected_hours": 11.0,
+    "model_id": "Qwen/Qwen2.5-7B-Instruct",
+    "n_bins": 15,
+    "n_boot": 2000,
+    "n_samples": 5,
+    "pilot": true,
+    "pilot_n": 20,
+    "pilot_split": "train",
+    "sample_max_new_tokens": 1024,
+    "sample_temperature": 0.7,
+    "sample_top_p": 1.0,
+    "tensor_parallel_size": 2,
+    "topk_logprobs": 20
+  },
+  "config_hash": "6ddc194e8fc2",
+  "data": {
+    "n_train_rows": 10178,
+    "pilot_train_indices": [
+      1899,
+      2075,
+      2168,
+      2309,
+      2331,
+      3218,
+      3384,
+      3976,
+      5772,
+      6085,
+      6243,
+      6532,
+      6845,
+      6874,
+      7103,
+      8013,
+      8104,
+      8536,
+      9585,
+      10049
+    ],
+    "test": {
+      "gold_distribution": {
+        "A": 353,
+        "B": 309,
+        "C": 346,
+        "D": 265
+      },
+      "meta_info_distribution": {
+        "step1": 679,
+        "step2&3": 594
+      },
+      "n_answer_text_mismatch": 0,
+      "n_options_cleaned": 43,
+      "n_questions": 1273
+    },
+    "used": {
+      "gold_distribution": {
+        "A": 5,
+        "B": 5,
+        "C": 5,
+        "D": 5
+      },
+      "meta_info_distribution": {
+        "step1": 13,
+        "step2&3": 7
+      },
+      "n_answer_text_mismatch": 0,
+      "n_options_cleaned": 1,
+      "n_questions": 20
+    },
+    "used_split": "train"
+  },
+  "dataset_id": "GBaker/MedQA-USMLE-4-options",
+  "dataset_revision": "0fb93dd23a7339b6dcd27e241cb9b5eca62d4d18",
+  "determinism": {
+    "identical": 7,
+    "n": 10,
+    "qids_differing": [
+      2309,
+      3976,
+      5772
+    ]
+  },
+  "environment": {
+    "cuda": "12.8",
+    "gpus": [
+      "Tesla T4",
+      "Tesla T4"
+    ],
+    "nvidia_smi": "Tesla T4, 15360 MiB, 580.178.04\nTesla T4, 15360 MiB, 580.178.04",
+    "platform": "Linux-6.18.48+-x86_64-with-glibc2.39",
+    "python": "3.13.15",
+    "torch": "2.11.0+cu128"
+  },
+  "example_rendered_cot_prompt": "<|im_start|>system\nYou are Qwen, created by Alibaba Cloud. You are a helpful assistant.<|im_end|>\n<|im_start|>user\nThe following is a multiple-choice question from the US Medical Licensing Examination (USMLE). Choose the single best answer.\n\nQuestion: A 21-year-old man with a recent history of traumatic right femur fracture status post open reduction and internal fixation presents for follow-up. The patient says his pain is controlled with the oxycodone but he says he has been severely constipated the past 4 days. No other past medical history. Current medications are oxycodone and ibuprofen. The patient is afebrile and vital signs are within normal limits. On physical examination, surgical incision is healing well. Which of the following is correct regarding the likely role of opiates in this patient\u2019s constipation?\nA. Opiates increase the production and secretion of pancreatic digestive enzymes\nB. Opiates increase fluid absorption from the lumen leading to hard stools\nC. Opiates decrease the sympathetic activity of the gut wall\nD. Opiates activate the excitatory neural pathways in the gut\n\nThink through the problem step by step. Then finish with exactly these two lines:\nAnswer: <A, B, C or D>\nConfidence: <a number from 0 to 100: the probability that your answer is correct><|im_end|>\n<|im_start|>assistant\n",
+  "generation": {
+    "checkpoint": "/kaggle/working/outputs/qwen2_5_7b_instruct_pilot/checkpoint.jsonl",
+    "complete": true,
+    "generation_seconds": 42.594932556152344,
+    "n_generated": 20,
+    "n_resumed": 0,
+    "seconds_per_question": 2.1297466278076174,
+    "stopped_early": false
+  },
+  "model_id": "Qwen/Qwen2.5-7B-Instruct",
+  "model_revision": "a09a35458c702b33eeacc393d103063234e8bc28",
+  "pilot": true,
+  "pilot_projection": {
+    "abort": false,
+    "generated_tokens": 22940,
+    "max_hours": 11.0,
+    "output_health": {
+      "empty_outputs": 0,
+      "max_repeated_line": 1,
+      "min_printable_ratio": 1.0
+    },
+    "projected_full_hours": 1.1844480724732083,
+    "seconds_per_question": 2.1297466278076174,
+    "setup_seconds": 630.0741481781006,
+    "throughput_tokens_per_s": 538.5617166961938,
+    "warnings": []
+  },
+  "seeds": {
+    "base_seed": 12345,
+    "boot_seed": 2026,
+    "cv_seed": 2026,
+    "sample_seed": "base_seed + qid"
+  },
+  "status": "complete",
+  "timings_seconds": {
+    "analysis": 14.156458377838135,
+    "data": 4.813250780105591,
+    "determinism": 22.77145552635193,
+    "generation": 42.59607410430908,
+    "install": 223.7792592048645,
+    "model_download": 63.58418941497803,
+    "model_load": 128.0890507698059,
+    "reports": 0.03315138816833496,
+    "smoke_test": 214.62164878845215,
+    "total_wall": 727.5203769207001
+  },
+  "versions": {
+    "cuda": "12.8",
+    "datasets": "4.8.5",
+    "gpus": [
+      "Tesla T4",
+      "Tesla T4"
+    ],
+    "huggingface_hub": "1.29.0",
+    "matplotlib": "3.10.0",
+    "numpy": "2.1.3",
+    "pandas": "2.3.3",
+    "platform": "Linux-6.18.48+-x86_64-with-glibc2.39",
+    "python": "3.13.15",
+    "scipy": "1.16.3",
+    "sklearn": "1.6.1",
+    "tokenizers": "0.23.1",
+    "torch": "2.11.0+cu128",
+    "transformers": "5.16.1",
+    "vllm": "0.26.0"
+  }
+}
