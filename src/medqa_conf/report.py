@@ -475,7 +475,9 @@ def combine(paths, out_dir: str, ap: dict | None = None, prereg_path: str | None
     for f in frames:
         m = f.model.iloc[0]
         if m in by_model:
-            raise ValueError(f"model {m} appears twice")
+            if f.reset_index(drop=True).equals(by_model[m][0].reset_index(drop=True)):
+                continue  # same run found twice (e.g. its CSV and its share bundle)
+            raise ValueError(f"model {m} appears twice with different data")
         by_model[m] = (f, analyze_frame(f, ap))
     combined = {"analysis_params": ap, "models": sorted(by_model), "settings": {}}
     for setting in SETTINGS:

@@ -309,7 +309,7 @@ pairs × non-flagged models within each setting (CoT = primary family). Output: 
 """
 
 COMBINE_RUN = '''\
-import glob, os, sys, time
+import glob, os, sys, time, zipfile
 MOCK = os.environ.get("MEDQA_MOCK") == "1"
 INPUTS = ["/kaggle/input"] if os.path.isdir("/kaggle/input") else [os.environ.get("MEDQA_COMBINE_INPUT", "outputs")]
 print("Python", sys.version.split()[0])
@@ -317,11 +317,21 @@ sys.path.insert(0, os.path.abspath("medqa_src"))
 from medqa_conf import report
 WORK = "/kaggle/working" if os.path.isdir("/kaggle/working") else os.getcwd()
 csvs = report._find_csvs(INPUTS)
-zips = [] if csvs else sorted(glob.glob(os.path.join(INPUTS[0], "**", "share_bundle_*.zip"), recursive=True))
-zips = [z for z in zips if not z.endswith("share_bundle_all.zip")]
-print("found CSVs:", csvs, "\\nfound bundles:", zips)
+# zips that were not unpacked (a run's downloaded Output zip, or a share bundle): extract only per_question.csv
+zips = [z for z in sorted(glob.glob(os.path.join(INPUTS[0], "**", "*.zip"), recursive=True))
+        if not z.endswith("share_bundle_all.zip")]
+for z in zips:
+    with zipfile.ZipFile(z) as zf:
+        names = [n for n in zf.namelist() if n.endswith("per_question.csv")]
+        if names:
+            dest = os.path.join(WORK, "_unzipped", os.path.splitext(os.path.basename(z))[0])
+            zf.extractall(dest, members=names)
+            csvs += [os.path.join(dest, n) for n in names]
+print("found CSVs:\\n" + "\\n".join(csvs))
+if not csvs:
+    raise RuntimeError("no per_question.csv found under " + INPUTS[0] + ": attach the run outputs as input")
 t0 = time.time()
-C = report.combine(csvs or zips, os.path.join(WORK, "combined"), prereg_path="medqa_src/PREREGISTRATION.md")
+C = report.combine(csvs, os.path.join(WORK, "combined"), prereg_path="medqa_src/PREREGISTRATION.md")
 print(open(os.path.join(WORK, "combined", "results_all.md"), encoding="utf-8").read())
 print("models:", C["models"], "| bundle:", C["bundle"], f"| {time.time() - t0:.1f}s")
 '''
