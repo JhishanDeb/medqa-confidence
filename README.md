@@ -17,6 +17,10 @@ accuracy at 80% coverage and AURC, with paired bootstrap CIs, paired DeLong test
 Every choice (prompts, models, sampling, metrics, bins, hypotheses, decision rule, validity flags) was fixed in
 [PREREGISTRATION.md](PREREGISTRATION.md) and committed on 2026-10-10, **before any GPU run**.
 
+**Quick check (CPU, no GPU needed):** `pip install -r requirements.txt`, then `python -m pytest -q` (the full test
+suite runs in about a minute). Every number below can be recomputed on CPU; see
+[Reproducing the analysis](#reproducing-the-analysis-cpu-no-gpu-needed).
+
 ## Results
 
 All three models passed every pre-registered validity check in both settings (accuracy ≥ 0.40, parse failures
@@ -106,8 +110,10 @@ generated text. Raw generations are not in the repository; `raw_examples.md` sho
 Every number in `results/` is computed from the per-model `per_question.csv` files alone.
 
 ```bash
-pip install numpy scipy pandas scikit-learn matplotlib pytest nbformat nbclient ipykernel
+pip install -r requirements.txt
 ```
+
+`requirements.txt` pins the analysis libraries to the versions used for the final runs (Python 3.13).
 
 ```bash
 python -m pytest -q
@@ -236,6 +242,7 @@ main run batches 50 questions per chunk and the pilot only 20.
 - MedQA (USMLE, 4 options) via [GBaker/MedQA-USMLE-4-options](https://huggingface.co/datasets/GBaker/MedQA-USMLE-4-options);
   original dataset: Jin et al., *What disease does this patient have? A large-scale open domain question
   answering dataset from medical exams*, Applied Sciences 2021.
+- The code is released under the MIT License ([LICENSE](LICENSE)).
 - Models are used under their own licences:
   [Qwen2.5-7B-Instruct](https://huggingface.co/Qwen/Qwen2.5-7B-Instruct),
   [Llama-3.1-8B-Instruct](https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct),
