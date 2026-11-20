@@ -1,0 +1,14 @@
+cff-version: 1.2.0
+message: "If you use this code or results, please cite it as below."
+title: "Which confidence signal works for medical QA? A pre-registered comparison of LLM confidence signals on MedQA"
+authors:
+  - family-names: Deb
+    given-names: Jhishan
+type: software
+repository-code: "https://github.com/JhishanDeb/medqa-confidence"
+license: MIT
+keywords:
+  - calibration
+  - confidence estimation
+  - medical question answering
+  - large language models
